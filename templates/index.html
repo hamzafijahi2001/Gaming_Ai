@@ -1,25 +1,582 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>AI Game Code Generator</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unity Code Visualizer</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f7fa;
+            color: #333;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        h1 {
+            color: #2c3e50;
+        }
+        .upload-area {
+            border: 2px dashed #3498db;
+            border-radius: 10px;
+            padding: 30px;
+            text-align: center;
+            background-color: #ecf0f1;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 20px auto;
+            max-width: 500px;
+        }
+        .upload-area:hover {
+            background-color: #d6eaf8;
+        }
+        .upload-icon {
+            font-size: 50px;
+            color: #3498db;
+            margin-bottom: 10px;
+        }
+        #fileInput {
+            display: none;
+        }
+        .visualization-container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .class-node {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+        }
+        .mono-behavior {
+            background-color: #3498db;
+            border: 2px solid #2980b9;
+        }
+        .interface {
+            background-color: #e74c3c;
+            border: 2px solid #c0392b;
+        }
+        #graph-container {
+            width: 100%;
+            height: 500px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background-color: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        .method-flow {
+            background-color: white;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            min-height: 150px;
+        }
+        .flow-placeholder {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100px;
+            color: #7f8c8d;
+        }
+        .flow-icon {
+            font-size: 40px;
+            opacity: 0.3;
+        }
+        .node {
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .node:hover {
+            filter: brightness(1.1);
+            transform: scale(1.05);
+        }
+        .link {
+            stroke-opacity: 0.6;
+        }
+        .code-preview {
+            background-color: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            font-family: monospace;
+            white-space: pre;
+            overflow-x: auto;
+            margin-top: 20px;
+        }
+        .tab-container {
+            display: flex;
+            margin-bottom: -1px;
+        }
+        .tab {
+            padding: 10px 20px;
+            background: #eee;
+            border: 1px solid #ddd;
+            border-radius: 4px 4px 0 0;
+            cursor: pointer;
+            margin-right: 5px;
+        }
+        .tab.active {
+            background: white;
+            border-bottom: 1px solid white;
+        }
+    </style>
 </head>
 <body>
-    <h1>Game Code Generator</h1>
-    <form method="POST">
-        <label>Choose Engine:</label>
-        <select name="engine">
-            <option value="Godot GDScript">Godot</option>
-            <option value="Unity C#">Unity</option>
-        </select>
-        <br><br>
-        <textarea name="prompt" rows="4" cols="50" placeholder="Describe your game mechanic..."></textarea><br>
-        <button type="submit">Generate</button>
-    </form>
+    <div class="container">
+        <header>
+            <h1>Unity Code Visualizer</h1>
+            <div class="upload-area" id="dropZone">
+                <div class="upload-icon">↑</div>
+                <p>Drag & drop Unity C# scripts here</p>
+                <p><em>For this demo, sample code is loaded automatically</em></p>
+                <input type="file" id="fileInput" accept=".cs" multiple>
+            </div>
+        </header>
 
-    {% if code %}
-    <h2>Generated Code:</h2>
-    <pre>{{ code }}</pre>
-    {% endif %}
+        <div class="visualization-container">
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="class-node mono-behavior"></div>
+                    <span>Class</span>
+                </div>
+                <div class="legend-item">
+                    <div class="class-node interface"></div>
+                    <span>Interface</span>
+                </div>
+                <div class="legend-item">
+                    <svg width="30" height="20">
+                        <line x1="0" y1="10" x2="30" y2="10" stroke="#ff6b6b" stroke-width="2" stroke-dasharray="5,5"/>
+                    </svg>
+                    <span>Uses</span>
+                </div>
+                <div class="legend-item">
+                    <svg width="30" height="20">
+                        <line x1="0" y1="10" x2="30" y2="10" stroke="#4ecdc4" stroke-width="3"/>
+                        <polygon points="25,5 30,10 25,15" fill="#4ecdc4"/>
+                    </svg>
+                    <span>Inherits</span>
+                </div>
+            </div>
+
+            <div id="graph-container"></div>
+            
+            <div class="method-flow" id="methodFlow">
+                <h3>Click a class to see method flow</h3>
+                <div class="flow-placeholder">
+                    <div class="flow-icon">→</div>
+                </div>
+            </div>
+
+            <div class="tab-container">
+                <div class="tab active" onclick="showTab('player-controller')">PlayerController.cs</div>
+                <div class="tab" onclick="showTab('ienemy')">IEnemy.cs</div>
+                <div class="tab" onclick="showTab('game-manager')">GameManager.cs</div>
+            </div>
+
+            <div id="player-controller" class="code-preview">
+using UnityEngine;
+
+public class PlayerController : MonoBehaviour, ICharacter
+{
+    [SerializeField] private float moveSpeed = 5f;
+    [SerializeField] private float jumpForce = 7f;
+    
+    private Rigidbody rb;
+    private bool isGrounded;
+    
+    private void Start()
+    {
+        rb = GetComponent&lt;Rigidbody&gt;();
+    }
+    
+    private void Update()
+    {
+        HandleMovement();
+        HandleJump();
+    }
+    
+    private void HandleMovement()
+    {
+        float moveX = Input.GetAxis("Horizontal");
+        float moveZ = Input.GetAxis("Vertical");
+        
+        Vector3 movement = new Vector3(moveX, 0f, moveZ);
+        transform.Translate(movement * moveSpeed * Time.deltaTime);
+    }
+    
+    private void HandleJump()
+    {
+        if (Input.GetButtonDown("Jump") && isGrounded)
+        {
+            rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
+            isGrounded = false;
+        }
+    }
+    
+    private void OnCollisionEnter(Collision collision)
+    {
+        if (collision.gameObject.CompareTag("Ground"))
+        {
+            isGrounded = true;
+        }
+    }
+    
+    public void TakeDamage(float amount)
+    {
+        // Implementation required by ICharacter
+    }
+}
+            </div>
+
+            <div id="ienemy" class="code-preview" style="display:none">
+public interface ICharacter
+{
+    void TakeDamage(float amount);
+    float Health { get; set; }
+    bool IsAlive { get; }
+}
+            </div>
+
+            <div id="game-manager" class="code-preview" style="display:none">
+using UnityEngine;
+
+public class GameManager : MonoBehaviour
+{
+    public static GameManager Instance { get; private set; }
+    
+    public PlayerController Player { get; private set; }
+    public int Score { get; private set; }
+    
+    private void Awake()
+    {
+        if (Instance == null)
+        {
+            Instance = this;
+            DontDestroyOnLoad(gameObject);
+        }
+        else
+        {
+            Destroy(gameObject);
+        }
+    }
+    
+    public void RegisterPlayer(PlayerController player)
+    {
+        Player = player;
+    }
+    
+    public void AddScore(int points)
+    {
+        Score += points;
+        Debug.Log("Current score: " + Score);
+    }
+    
+    public void GameOver()
+    {
+        Debug.Log("Game Over! Final Score: " + Score);
+        Time.timeScale = 0f;
+    }
+}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const dropZone = document.getElementById('dropZone');
+            const fileInput = document.getElementById('fileInput');
+            
+            // For demo purposes, we'll load sample data automatically
+            setTimeout(() => {
+                renderSampleGraph();
+            }, 500);
+            
+            // Tab functionality
+            window.showTab = function(tabId) {
+                // Hide all code previews
+                document.querySelectorAll('.code-preview').forEach(preview => {
+                    preview.style.display = 'none';
+                });
+                
+                // Remove active class from all tabs
+                document.querySelectorAll('.tab').forEach(tab => {
+                    tab.classList.remove('active');
+                });
+                
+                // Show selected tab and mark as active
+                document.getElementById(tabId).style.display = 'block';
+                event.currentTarget.classList.add('active');
+            };
+        });
+
+        function renderSampleGraph() {
+            // Sample data representing Unity classes
+            const sampleData = {
+                nodes: [
+                    { id: "PlayerController", type: "monoBehavior", methods: 8, properties: 3 },
+                    { id: "ICharacter", type: "interface", methods: 3, properties: 0 },
+                    { id: "GameManager", type: "monoBehavior", methods: 6, properties: 2 },
+                    { id: "EnemyAI", type: "monoBehavior", methods: 7, properties: 4 },
+                    { id: "InputHandler", type: "monoBehavior", methods: 4, properties: 2 }
+                ],
+                links: [
+                    { source: "PlayerController", target: "ICharacter", type: "implements" },
+                    { source: "EnemyAI", target: "ICharacter", type: "implements" },
+                    { source: "PlayerController", target: "InputHandler", type: "uses" },
+                    { source: "GameManager", target: "PlayerController", type: "uses" },
+                    { source: "GameManager", target: "EnemyAI", type: "uses" }
+                ]
+            };
+
+            renderGraph(sampleData);
+        }
+
+        function renderGraph(data) {
+            const container = document.getElementById('graph-container');
+            container.innerHTML = '';
+            
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            
+            const svg = d3.select('#graph-container')
+                .append('svg')
+                .attr('width', width)
+                .attr('height', height);
+            
+            // Create a group for the zoomable area
+            const g = svg.append('g');
+            
+            // Add zoom capability
+            svg.call(d3.zoom()
+                .scaleExtent([0.5, 3])
+                .on('zoom', (event) => {
+                    g.attr('transform', event.transform);
+                }));
+            
+            // Create a force simulation
+            const simulation = d3.forceSimulation(data.nodes)
+                .force('link', d3.forceLink(data.links).id(d => d.id).distance(100))
+                .force('charge', d3.forceManyBody().strength(-300))
+                .force('center', d3.forceCenter(width / 2, height / 2))
+                .force('collision', d3.forceCollide().radius(d => Math.sqrt(d.methods) * 8 + 20));
+            
+            // Draw links
+            const link = g.append('g')
+                .selectAll('line')
+                .data(data.links)
+                .enter().append('line')
+                .attr('class', 'link')
+                .attr('stroke', d => d.type === 'implements' ? '#4ecdc4' : '#ff6b6b')
+                .attr('stroke-width', d => d.type === 'implements' ? 3 : 2)
+                .attr('stroke-dasharray', d => d.type === 'implements' ? null : '5,5');
+            
+            // Add arrows for inheritance
+            g.append('defs').selectAll('marker')
+                .data(data.links.filter(d => d.type === 'implements'))
+                .enter().append('marker')
+                .attr('id', d => `arrow-${d.source.id}-${d.target.id}`)
+                .attr('viewBox', '0 -5 10 10')
+                .attr('refX', 25)
+                .attr('refY', 0)
+                .attr('markerWidth', 6)
+                .attr('markerHeight', 6)
+                .attr('orient', 'auto')
+                .append('path')
+                .attr('d', 'M0,-5L10,0L0,5')
+                .attr('fill', '#4ecdc4');
+            
+            link.filter(d => d.type === 'implements')
+                .attr('marker-end', d => `url(#arrow-${d.source.id}-${d.target.id})`);
+            
+            // Draw nodes
+            const node = g.append('g')
+                .selectAll('g')
+                .data(data.nodes)
+                .enter().append('g')
+                .attr('class', 'node')
+                .call(d3.drag()
+                    .on('start', dragstarted)
+                    .on('drag', dragged)
+                    .on('end', dragended));
+            
+            // Add circles for nodes
+            node.append('circle')
+                .attr('r', d => Math.sqrt(d.methods) * 8 + 20)
+                .attr('fill', d => d.type === 'monoBehavior' ? '#3498db' : '#e74c3c')
+                .attr('stroke', d => d.type === 'monoBehavior' ? '#2980b9' : '#c0392b')
+                .attr('stroke-width', 2);
+            
+            // Add text labels
+            node.append('text')
+                .attr('dy', 4)
+                .attr('text-anchor', 'middle')
+                .text(d => d.id)
+                .style('fill', 'white')
+                .style('font-weight', 'bold')
+                .style('pointer-events', 'none');
+            
+            // Add method count indicators
+            node.append('text')
+                .attr('dy', 20)
+                .attr('text-anchor', 'middle')
+                .text(d => `${d.methods} methods`)
+                .style('fill', 'white')
+                .style('font-size', '12px')
+                .style('pointer-events', 'none');
+            
+            // Update positions on simulation tick
+            simulation.on('tick', () => {
+                link
+                    .attr('x1', d => d.source.x)
+                    .attr('y1', d => d.source.y)
+                    .attr('x2', d => d.target.x)
+                    .attr('y2', d => d.target.y);
+                
+                node
+                    .attr('transform', d => `translate(${d.x},${d.y})`);
+            });
+            
+            // Drag functions
+            function dragstarted(event, d) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+            
+            function dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+            
+            function dragended(event, d) {
+                if (!event.active) simulation.alphaTarget(0);
+                d.fx = null;
+                d.fy = null;
+            }
+            
+            // Click handler for method flow visualization
+            node.on('click', (event, d) => {
+                showMethodFlow(d);
+            });
+        }
+
+        function showMethodFlow(node) {
+            const flowContainer = document.getElementById('methodFlow');
+            flowContainer.innerHTML = `<h3>${node.id} Method Flow</h3>`;
+            
+            // Create SVG for flow visualization
+            const flowSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            flowSvg.setAttribute('width', '100%');
+            flowSvg.setAttribute('height', '120');
+            
+            // Different flows for different classes
+            let flowSteps = [];
+            
+            if (node.id === "PlayerController") {
+                flowSteps = [
+                    { icon: '⌨️', label: 'Input' },
+                    { icon: '🔄', label: 'Movement' },
+                    { icon: '🏃', label: 'Jump' },
+                    { icon: '💥', label: 'Collision' }
+                ];
+            } else if (node.id === "GameManager") {
+                flowSteps = [
+                    { icon: '🎮', label: 'Init' },
+                    { icon: '📝', label: 'Register' },
+                    { icon: '⭐', label: 'Score' },
+                    { icon: '🛑', label: 'GameOver' }
+                ];
+            } else {
+                flowSteps = [
+                    { icon: '⚙️', label: 'Start' },
+                    { icon: '🔁', label: 'Update' },
+                    { icon: '💾', label: 'Save' },
+                    { icon: '📤', label: 'Exit' }
+                ];
+            }
+            
+            const spacing = 100;
+            const startX = 50;
+            
+            flowSteps.forEach((step, i) => {
+                const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                g.setAttribute('transform', `translate(${startX + i * spacing}, 60)`);
+                
+                const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+                circle.setAttribute('r', '30');
+                circle.setAttribute('fill', node.type === 'monoBehavior' ? '#3498db' : '#e74c3c');
+                g.appendChild(circle);
+                
+                const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                text.setAttribute('text-anchor', 'middle');
+                text.setAttribute('dy', '5');
+                text.setAttribute('fill', 'white');
+                text.textContent = step.icon;
+                g.appendChild(text);
+                
+                if (i > 0) {
+                    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                    line.setAttribute('x1', startX + (i - 1) * spacing + 30);
+                    line.setAttribute('y1', '60');
+                    line.setAttribute('x2', startX + i * spacing - 30);
+                    line.setAttribute('y2', '60');
+                    line.setAttribute('stroke', '#7f8c8d');
+                    line.setAttribute('stroke-width', '2');
+                    line.setAttribute('marker-end', 'url(#arrowhead)');
+                    flowSvg.appendChild(line);
+                }
+                
+                const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                label.setAttribute('x', startX + i * spacing);
+                label.setAttribute('y', '110');
+                label.setAttribute('text-anchor', 'middle');
+                label.setAttribute('fill', '#2c3e50');
+                label.textContent = step.label;
+                g.appendChild(label);
+                
+                flowSvg.appendChild(g);
+            });
+            
+            // Add arrowhead marker
+            const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+            const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+            marker.setAttribute('id', 'arrowhead');
+            marker.setAttribute('viewBox', '0 0 10 10');
+            marker.setAttribute('refX', '9');
+            marker.setAttribute('refY', '5');
+            marker.setAttribute('markerWidth', '6');
+            marker.setAttribute('markerHeight', '6');
+            marker.setAttribute('orient', 'auto');
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            path.setAttribute('d', 'M 0 0 L 10 5 L 0 10 z');
+            path.setAttribute('fill', '#7f8c8d');
+            marker.appendChild(path);
+            defs.appendChild(marker);
+            flowSvg.insertBefore(defs, flowSvg.firstChild);
+            
+            flowContainer.appendChild(flowSvg);
+        }
+    </script>
 </body>
 </html>
