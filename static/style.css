@@ -1,0 +1,16 @@
+body {
+    font-family: sans-serif;
+    max-width: 600px;
+    margin: 40px auto;
+    background-color: #f8f8f8;
+    padding: 20px;
+}
+textarea {
+    width: 100%;
+}
+pre {
+    background: #222;
+    color: #0f0;
+    padding: 15px;
+    white-space: pre-wrap;
+}

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Game Code Generator</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <h1>Game Code Generator</h1>
+    <form method="POST">
+        <label>Choose Engine:</label>
+        <select name="engine">
+            <option value="Godot GDScript">Godot</option>
+            <option value="Unity C#">Unity</option>
+        </select>
+        <br><br>
+        <textarea name="prompt" rows="4" cols="50" placeholder="Describe your game mechanic..."></textarea><br>
+        <button type="submit">Generate</button>
+    </form>
+
+    {% if code %}
+    <h2>Generated Code:</h2>
+    <pre>{{ code }}</pre>
+    {% endif %}
+</body>
+</html>
